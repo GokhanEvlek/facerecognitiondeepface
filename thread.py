@@ -13,6 +13,21 @@ from PyQt5.QtGui import *
 from PyQt5.QtWidgets import *
 from PyQt5.QtCore import *
 
+from dis import dis
+import cv2 as cv
+from deepface.commons import functions
+from deepface import DeepFace
+from mtcnn import MTCNN
+import time
+from deepface.basemodels import Facenet,ArcFace
+import numpy as np
+
+from deepface.commons import functions, realtime, distance as dst
+from deepface.DeepFace import *
+from deepface.detectors import FaceDetector
+
+from deepface.basemodels import VGGFace, OpenFace, Facenet, Facenet512, FbDeepFace, DeepID, DlibWrapper, ArcFace, Boosting
+from deepface.extendedmodels import Age, Gender, Race, Emotion
 
 
 tespityapildimi=0
@@ -33,6 +48,7 @@ class myApp(QtWidgets.QMainWindow):
         """
         self.disply_width = 640
         self.display_height = 480
+
         self.ui.baslatmabutonu.clicked.connect(self.yuztanima)
         
 
@@ -62,42 +78,103 @@ class myApp(QtWidgets.QMainWindow):
 
 class Worker1(QThread):
     ImageUpdate = pyqtSignal(QImage,QImage)
+
+
     def run(self):
         global tespityapildimi
         self.ThreadActive = True
         Capture = cv.VideoCapture(0)
-        detector = MTCNN()
+        model_name='Facenet'
+        distance_metric='euclidean'
+        model=None
 
+        enforce_detection = True
+        detector_backend = 'mtcnn'
+        align = True
+        prog_bar = True 
+
+        normalization = 'base'
+
+
+        
+        blank_foto= cv.imread("images.jpg")
+
+
+        blank_foto = cv.resize(blank_foto, (112,112))
+
+
+
+        img_base = cv.imread("C:\\WhatsAppImage2022-09-1920.23.10.jpeg")
+
+
+        if model == None:
+            if model_name == 'Ensemble':
+                models = Boosting.loadModel()
+            else:
+                model = build_model(model_name)
+                models = {}
+                models[model_name] = model
+        else:
+            if model_name == 'Ensemble':
+                Boosting.validate_model(model)
+                models = model.copy()
+            else:
+                models = {}
+                models[model_name] = model
+
+        if model_name == 'Ensemble':
+            model_names = ["VGG-Face", "Facenet", "OpenFace", "DeepFace"]
+            metrics = ["cosine", "euclidean", "euclidean_l2"]
+        else:
+            model_names = []; metrics = []
+            model_names.append(model_name)
+            metrics.append(distance_metric)
+
+
+
+
+
+        img1_representation,detected_face_base = represent(img_path = img_base
+            , model_name = model_name, model = model
+            , enforce_detection = enforce_detection, detector_backend = detector_backend
+            , align = align
+            , normalization = normalization
+            )
         while self.ThreadActive:
             ret, frame = Capture.read()
             if ret:
-                frame = cv.cvtColor(frame, cv.COLOR_BGR2RGB)
                 
-                detections = detector.detect_faces(frame)
-                print("yuz tanima yapiliyor")
-                if len(detections) !=0:
-                    print(type(detections[0]))
-                    print(detections[0]["box"])
-                    coordinates=detections[0]["box"]
-                    
-                    #frame = cv.cvtColor(frame, cv.COLOR_BGR2RGB)
-                    #cv.imwrite('yuz.jpg', frame)
-                    obj = DeepFace.verify("foto.jpg",frame, model_name='Facenet',enforce_detection= True, detector_backend='mtcnn')
-                    
-                    frame=cv.rectangle(frame,(coordinates[0],coordinates[1]),(coordinates[0]+coordinates[2],coordinates[1]+coordinates[3]),(255,255,255),1)
-                    print(obj)
-                    if obj["verified"]==True:
-                        #frame=cv.putText(frame,"Tanınacak kişinin adı",(coordinates[0],coordinates[1]+coordinates[3]+20),1,2,(255,0,0),2,cv.LINE_AA)
-                        tespityapildimi=1
-                        kafa=frame[coordinates[1]:coordinates[1]+coordinates[3],coordinates[0]:coordinates[0]+coordinates[2]]
+                try:
+                    img2_representation,detected_face = represent(img_path = frame
+                    , model_name = model_name, model = model
+                    , enforce_detection = enforce_detection, detector_backend = detector_backend
+                    , align = align
+                    , normalization = normalization
+                    )
+                    distance = dst.findEuclideanDistance(img1_representation, img2_representation)
+                    distance = np.float64(distance)
 
+
+                    if distance<10:
+                        print("Eslesme oldu: ",distance)
+                    else:
+                        print("Eslesme olmadi: ", distance)
+
+        
+
+
+
+
+                except:
+                    print("Yuz bulunamadi ")
+                    detected_face=blank_foto
                 dim = (480, 640)
-                dim2= (64,64)                
+                dim2= (64,64)
+                frame = cv.cvtColor(frame, cv.COLOR_BGR2RGB)                
                 frame = cv.resize(frame,dim,interpolation = cv.INTER_AREA)
-                if tespityapildimi==0:
-                    kafa=frame[80:280, 150:330]
-                kafa = cv.resize(kafa,dim2,interpolation = cv.INTER_AREA)
-                flippedkafa=cv.flip(kafa,1)
+                detected_face = cv.cvtColor(detected_face, cv.COLOR_BGR2RGB)   
+                detected_face = cv.resize(detected_face,dim2,interpolation = cv.INTER_AREA)
+                flippedkafa=cv.flip(detected_face,1)
                 ConvertToQtFormatkafa = QImage(flippedkafa.data, flippedkafa.shape[1], flippedkafa.shape[0], QImage.Format_RGB888)
                 FlippedImage = cv.flip(frame, 1)
                 ConvertToQtFormat = QImage(FlippedImage.data, FlippedImage.shape[1], FlippedImage.shape[0], QImage.Format_RGB888)
@@ -106,20 +183,3 @@ class Worker1(QThread):
     def stop(self):
         self.ThreadActive = False
         self.quit()
-
-
-
-
-
-
-
-
-
-def app():
-    app = QtWidgets.QApplication(sys.argv)
-    app.setStyleSheet("QPushButton { color: red}")
-    win = myApp()
-    win.show()
-    sys.exit(app.exec_())
-
-app()
